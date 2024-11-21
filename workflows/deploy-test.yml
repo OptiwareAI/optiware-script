@@ -1,0 +1,68 @@
+name: Compilation check
+
+on:
+  # Trigger the workflow on push or pull request,
+  # but only for the dev and main branches
+  push:
+    branches:
+      - main
+      - trunk
+  pull_request:
+    branches:
+      - main
+      - trunk
+  workflow_dispatch:
+    inputs:
+      logLevel:
+        description: 'Log level'     
+        required: false
+        default: 'warning'
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2.3.4
+      - run: | 
+          echo "Installing rime engine"
+          sudo apt-get install curl git ibus-rime -y
+      - run: | 
+          echo "Installing rime-cantonese files"
+          curl -fsSL https://git.io/rime-install | bash -s -- :preset emoji CanCLID/rime-loengfan custom:set:config=default,key=installed_from,value=rime-cantonese custom:clear_schema_list custom:add:schema=jyut6ping3 custom:add:schema=cangjie5 custom:add:schema=stroke custom:add:schema=luna_pinyin lotem/rime-octagram-data lotem/rime-octagram-data@hant lotem/rime-octagram-data:customize:schema=jyut6ping3,model=hant
+          cp ./*.{txt,yaml} ~/.config/ibus/rime
+          cp ./opencc/* ~/.config/ibus/rime
+      - run: | 
+          echo "Compiling..."
+          chmod u+wx ~/.config/ibus/rime/*
+          rime_deployer --build ~/.config/ibus/rime 2> log.tmp
+      - run: |
+          echo "Checking..."
+          cat log.tmp
+          exit $( cat log.tmp | grep -c ^[EW] ) 
+
+  check_jyutping_cpp:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2.3.4
+      - run: |
+          echo "Installing prerequisites..."
+          sudo apt-get install libboost-all-dev
+      - run: |
+          echo "Building checker from source..."
+          export LD_LIBRARY_PATH="/usr/lib/boost/lib"
+          g++ .ci/checker.cpp -o checker.o -Ofast -I/usr/include/boost -L/usr/lib/boost/lib -lboost_regex
+          chmod u+x ./checker.o
+      - run: |
+          echo "Checking jyut6ping3.dict.yaml"
+          time ./checker.o jyut6ping3.dict.yaml
+
+
+  check_jyutping_php:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2.3.4
+      - run: |
+          php .ci/verify.php 
